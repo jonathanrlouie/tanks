@@ -1,15 +1,20 @@
 use bevy::{
+    diagnostic::{Diagnostics, FrameTimeDiagnosticsPlugin},
     prelude::*,
     render::camera::Camera,
     sprite::collide_aabb::{collide, Collision},
 };
 
+const SHOW_FPS: bool = true;
+
 fn main() {
     App::build()
         .insert_resource(CursorPosition { pos: Vec2::ZERO })
         .add_plugins(DefaultPlugins)
+        .add_plugin(FrameTimeDiagnosticsPlugin::default())
         .add_state(GameState::Playing)
-        .add_startup_system(setup_camera.system())
+        .add_startup_system(setup_cameras.system())
+        .add_startup_system(setup_text.system())
         .add_system_set(SystemSet::on_enter(GameState::Playing).with_system(setup.system()))
         .add_system_set(
             SystemSet::on_update(GameState::Playing)
@@ -27,7 +32,24 @@ fn main() {
         )
         .add_system_set(SystemSet::on_update(GameState::Lose).with_system(lose_system.system()))
         .add_system_set(SystemSet::on_exit(GameState::Lose).with_system(teardown_system.system()))
+        .add_system_set(SystemSet::on_enter(GameState::Win).with_system(win_setup_system.system()))
+        .add_system_set(SystemSet::on_update(GameState::Win).with_system(win_system.system()))
+        .add_system_set(
+            SystemSet::on_exit(GameState::Win)
+                .with_system(blank_text_system.system())
+                .with_system(teardown_system.system()),
+        )
+        .add_system(text_update_system.system())
         .run()
+}
+
+struct UiElement;
+struct FpsText;
+struct WinText;
+
+enum Level {
+    L1,
+    L2,
 }
 
 #[derive(Clone, Eq, PartialEq, Debug, Hash)]
@@ -41,7 +63,7 @@ struct CursorPosition {
     pos: Vec2,
 }
 
-struct LoseTimer(Timer);
+struct GameTimer(Timer);
 
 enum Collider {
     Wall,
@@ -70,9 +92,108 @@ struct Enemy;
 
 struct BrownTank;
 
-fn setup_camera(mut commands: Commands) {
-    // camera
+fn setup_cameras(mut commands: Commands) {
+    // game camera
     commands.spawn_bundle(OrthographicCameraBundle::new_2d());
+
+    // UI camera needed to render text
+    commands.spawn_bundle(UiCameraBundle::default());
+}
+
+fn setup_text(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
+    commands
+        .spawn_bundle(NodeBundle {
+            style: Style {
+                flex_direction: FlexDirection::Row,
+                size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
+                ..Default::default()
+            },
+            material: materials.add(Color::NONE.into()),
+            ..Default::default()
+        })
+        .insert(UiElement)
+        .with_children(|parent| {
+            // FPS text
+            parent
+                .spawn_bundle(TextBundle {
+                    style: Style {
+                        size: Size::new(Val::Percent(15.0), Val::Percent(100.0)),
+                        ..Default::default()
+                    },
+                    text: Text {
+                        sections: vec![
+                            TextSection {
+                                value: "FPS: ".to_string(),
+                                style: TextStyle {
+                                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                                    font_size: 60.0,
+                                    color: if SHOW_FPS { Color::WHITE } else { Color::NONE },
+                                },
+                            },
+                            TextSection {
+                                value: "".to_string(),
+                                style: TextStyle {
+                                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                                    font_size: 60.0,
+                                    color: if SHOW_FPS { Color::WHITE } else { Color::NONE },
+                                },
+                            },
+                        ],
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                })
+                .insert(UiElement)
+                .insert(FpsText);
+
+            parent
+                .spawn_bundle(NodeBundle {
+                    style: Style {
+                        size: Size::new(Val::Percent(70.0), Val::Percent(100.0)),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..Default::default()
+                    },
+                    material: materials.add(Color::NONE.into()),
+                    ..Default::default()
+                })
+                .insert(UiElement)
+                .with_children(|p2| {
+                    // Win text
+                    p2.spawn_bundle(TextBundle {
+                        text: Text {
+                            sections: vec![TextSection {
+                                value: "Mission complete!".to_string(),
+                                style: TextStyle {
+                                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                                    font_size: 60.0,
+                                    color: Color::NONE,
+                                },
+                            }],
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    })
+                    .insert(WinText)
+                    .insert(UiElement);
+                });
+
+            // Empty node to evenly split the UI
+            parent
+                .spawn_bundle(NodeBundle {
+                    style: Style {
+                        size: Size::new(Val::Percent(15.0), Val::Percent(100.0)),
+                        ..Default::default()
+                    },
+                    material: materials.add(Color::NONE.into()),
+                    ..Default::default()
+                })
+                .insert(UiElement);
+        });
 }
 
 fn setup(
@@ -447,21 +568,24 @@ fn playing_system(
     }
 }
 
-fn lose_setup_system(mut commands: Commands) {
-    commands
-        .spawn()
-        .insert(LoseTimer(Timer::from_seconds(4.0, false)));
-}
-
-fn teardown_system(mut commands: Commands, entities: Query<Entity, Without<Camera>>) {
+fn teardown_system(
+    mut commands: Commands,
+    entities: Query<Entity, (Without<Camera>, Without<UiElement>)>,
+) {
     for entity in entities.iter() {
         commands.entity(entity).despawn_recursive();
     }
 }
 
+fn lose_setup_system(mut commands: Commands) {
+    commands
+        .spawn()
+        .insert(GameTimer(Timer::from_seconds(4.0, false)));
+}
+
 fn lose_system(
     time: Res<Time>,
-    mut query: Query<&mut LoseTimer>,
+    mut query: Query<&mut GameTimer>,
     mut game_state: ResMut<State<GameState>>,
 ) {
     if let Ok(mut timer) = query.single_mut() {
@@ -470,5 +594,45 @@ fn lose_system(
                 .set(GameState::Playing)
                 .expect("Error: Failed to set Playing state");
         }
+    }
+}
+
+fn win_setup_system(mut commands: Commands, mut query: Query<&mut Text, With<WinText>>) {
+    commands
+        .spawn()
+        .insert(GameTimer(Timer::from_seconds(4.0, false)));
+
+    if let Ok(mut text) = query.single_mut() {
+        text.sections[0].style.color = Color::WHITE;
+    }
+}
+
+fn win_system(
+    time: Res<Time>,
+    mut query: Query<&mut GameTimer>,
+    mut game_state: ResMut<State<GameState>>,
+) {
+    if let Ok(mut timer) = query.single_mut() {
+        if timer.0.tick(time.delta()).just_finished() {
+            game_state
+                .set(GameState::Playing)
+                .expect("Error: Failed to set Playing state");
+        }
+    }
+}
+
+fn text_update_system(diagnostics: Res<Diagnostics>, mut query: Query<&mut Text, With<FpsText>>) {
+    for mut text in query.iter_mut() {
+        if let Some(fps) = diagnostics.get(FrameTimeDiagnosticsPlugin::FPS) {
+            if let Some(average) = fps.average() {
+                text.sections[1].value = format!("{:.2}", average);
+            }
+        }
+    }
+}
+
+fn blank_text_system(mut query: Query<&mut Text, With<WinText>>) {
+    if let Ok(mut text) = query.single_mut() {
+        text.sections[0].style.color = Color::NONE;
     }
 }
