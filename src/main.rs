@@ -10,6 +10,7 @@ const SHOW_FPS: bool = true;
 fn main() {
     App::build()
         .insert_resource(CursorPosition { pos: Vec2::ZERO })
+        .insert_resource(CurrentLevel(Some(Level::L1)))
         .add_plugins(DefaultPlugins)
         .add_plugin(FrameTimeDiagnosticsPlugin::default())
         .add_state(GameState::Playing)
@@ -37,6 +38,7 @@ fn main() {
         .add_system_set(
             SystemSet::on_exit(GameState::Win)
                 .with_system(blank_text_system.system())
+                .with_system(next_level_system.system())
                 .with_system(teardown_system.system()),
         )
         .add_system(text_update_system.system())
@@ -51,6 +53,8 @@ enum Level {
     L1,
     L2,
 }
+
+struct CurrentLevel(Option<Level>);
 
 #[derive(Clone, Eq, PartialEq, Debug, Hash)]
 enum GameState {
@@ -200,6 +204,20 @@ fn setup(
     commands: Commands,
     asset_server: Res<AssetServer>,
     materials: ResMut<Assets<ColorMaterial>>,
+    current_level: Res<CurrentLevel>,
+) {
+    if let Some(level) = &current_level.0 {
+        match level {
+            Level::L1 => setup_level1(commands, asset_server, materials),
+            Level::L2 => setup_level2(commands, asset_server, materials),
+        }
+    }
+}
+
+fn setup_level1(
+    commands: Commands,
+    asset_server: Res<AssetServer>,
+    materials: ResMut<Assets<ColorMaterial>>,
 ) {
     let mut creator = Creator {
         commands,
@@ -218,6 +236,31 @@ fn setup(
     // create enemies
     creator.create_brown_tank(-100.0, 100.0);
     creator.create_brown_tank(200.0, 150.0);
+}
+
+fn setup_level2(
+    commands: Commands,
+    asset_server: Res<AssetServer>,
+    materials: ResMut<Assets<ColorMaterial>>,
+) {
+    let mut creator = Creator {
+        commands,
+        asset_server,
+        materials,
+    };
+
+    // player
+    creator.create_player(0.0, 0.0);
+
+    // create walls
+    creator.create_wall(32.0, 64.0);
+    creator.create_wall(-32.0, 64.0);
+    creator.create_wall(32.0, -64.0);
+    creator.create_wall(-32.0, -64.0);
+    creator.create_wall(-80.0, -80.0);
+
+    // create enemies
+    creator.create_brown_tank(-100.0, 100.0);
 }
 
 struct Creator<'a> {
@@ -634,5 +677,14 @@ fn text_update_system(diagnostics: Res<Diagnostics>, mut query: Query<&mut Text,
 fn blank_text_system(mut query: Query<&mut Text, With<WinText>>) {
     if let Ok(mut text) = query.single_mut() {
         text.sections[0].style.color = Color::NONE;
+    }
+}
+
+fn next_level_system(mut current_level: ResMut<CurrentLevel>) {
+    if let Some(level) = &current_level.0 {
+        current_level.0 = match level {
+            Level::L1 => Some(Level::L2),
+            Level::L2 => None,
+        }
     }
 }
