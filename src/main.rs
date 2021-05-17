@@ -96,6 +96,7 @@ struct Enemy;
 
 struct BrownTank;
 
+// Camera system
 fn setup_cameras(mut commands: Commands) {
     // game camera
     commands.spawn_bundle(OrthographicCameraBundle::new_2d());
@@ -104,6 +105,7 @@ fn setup_cameras(mut commands: Commands) {
     commands.spawn_bundle(UiCameraBundle::default());
 }
 
+// Text systems
 fn setup_text(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
@@ -200,6 +202,17 @@ fn setup_text(
         });
 }
 
+fn text_update_system(diagnostics: Res<Diagnostics>, mut query: Query<&mut Text, With<FpsText>>) {
+    for mut text in query.iter_mut() {
+        if let Some(fps) = diagnostics.get(FrameTimeDiagnosticsPlugin::FPS) {
+            if let Some(average) = fps.average() {
+                text.sections[1].value = format!("{:.2}", average);
+            }
+        }
+    }
+}
+
+// Initial setup system
 fn setup(
     commands: Commands,
     asset_server: Res<AssetServer>,
@@ -214,55 +227,7 @@ fn setup(
     }
 }
 
-fn setup_level1(
-    commands: Commands,
-    asset_server: Res<AssetServer>,
-    materials: ResMut<Assets<ColorMaterial>>,
-) {
-    let mut creator = Creator {
-        commands,
-        asset_server,
-        materials,
-    };
-
-    // player
-    creator.create_player(0.0, 0.0);
-
-    // create walls
-    creator.create_wall(32.0, 64.0);
-    creator.create_wall(-32.0, 64.0);
-    creator.create_wall(32.0, -64.0);
-
-    // create enemies
-    creator.create_brown_tank(-100.0, 100.0);
-    creator.create_brown_tank(200.0, 150.0);
-}
-
-fn setup_level2(
-    commands: Commands,
-    asset_server: Res<AssetServer>,
-    materials: ResMut<Assets<ColorMaterial>>,
-) {
-    let mut creator = Creator {
-        commands,
-        asset_server,
-        materials,
-    };
-
-    // player
-    creator.create_player(0.0, 0.0);
-
-    // create walls
-    creator.create_wall(32.0, 64.0);
-    creator.create_wall(-32.0, 64.0);
-    creator.create_wall(32.0, -64.0);
-    creator.create_wall(-32.0, -64.0);
-    creator.create_wall(-80.0, -80.0);
-
-    // create enemies
-    creator.create_brown_tank(-100.0, 100.0);
-}
-
+// Creator for "prefabs"
 struct Creator<'a> {
     commands: Commands<'a>,
     asset_server: Res<'a, AssetServer>,
@@ -309,6 +274,58 @@ impl<'a> Creator<'a> {
     }
 }
 
+// Level 1 setup system
+fn setup_level1(
+    commands: Commands,
+    asset_server: Res<AssetServer>,
+    materials: ResMut<Assets<ColorMaterial>>,
+) {
+    let mut creator = Creator {
+        commands,
+        asset_server,
+        materials,
+    };
+
+    // player
+    creator.create_player(0.0, 0.0);
+
+    // create walls
+    creator.create_wall(32.0, 64.0);
+    creator.create_wall(-32.0, 64.0);
+    creator.create_wall(32.0, -64.0);
+
+    // create enemies
+    creator.create_brown_tank(-100.0, 100.0);
+    creator.create_brown_tank(200.0, 150.0);
+}
+
+// Level 2 setup system
+fn setup_level2(
+    commands: Commands,
+    asset_server: Res<AssetServer>,
+    materials: ResMut<Assets<ColorMaterial>>,
+) {
+    let mut creator = Creator {
+        commands,
+        asset_server,
+        materials,
+    };
+
+    // player
+    creator.create_player(0.0, 0.0);
+
+    // create walls
+    creator.create_wall(32.0, 64.0);
+    creator.create_wall(-32.0, 64.0);
+    creator.create_wall(32.0, -64.0);
+    creator.create_wall(-32.0, -64.0);
+    creator.create_wall(-80.0, -80.0);
+
+    // create enemies
+    creator.create_brown_tank(-100.0, 100.0);
+}
+
+// Main game systems
 #[allow(clippy::type_complexity)]
 fn player_movement_system(
     time: Res<Time>,
@@ -329,6 +346,7 @@ fn player_movement_system(
                 sprite.size,
             );
 
+            // Stop player movement on collision with walls or enemies
             if let Some(collision) = collision {
                 match *collider {
                     Collider::Wall | Collider::Enemy => collisions.push(collision),
@@ -356,6 +374,7 @@ fn player_movement_system(
             direction -= Vec2::Y;
         }
 
+        // Normalize the direction so player doesn't move faster on diagonals
         let normalized_direction = direction.try_normalize().unwrap_or(Vec2::ZERO);
         let translation = &mut player_transform.translation;
 
@@ -387,6 +406,7 @@ fn cursor_position_system(windows: Res<Windows>, mut cursor_position: ResMut<Cur
     }
 }
 
+// helper function to get cursor position
 fn calculate_cursor_position(windows: Res<Windows>) -> Option<Vec2> {
     let window = windows.get_primary()?;
     let cursor_position = window.cursor_position()?;
@@ -401,6 +421,7 @@ fn bullet_cleanup_system(
     windows: Res<Windows>,
     query: Query<(Entity, &Transform), With<Bullet>>,
 ) {
+    // Delete bullets if they are outside of the window
     if let Some(window) = windows.get_primary() {
         for (entity, transform) in query.iter() {
             if transform.translation.x > window.width() / 2.0
@@ -505,8 +526,10 @@ fn bullet_collision_system(
 
             if let Some(collision) = collision {
                 match *collider {
+                    // Bullets destroy each other on contact
                     Collider::Bullet => commands.entity(collider_entity).despawn(),
                     Collider::Enemy | Collider::Player => {
+                        // Make sure freshly fired bullets do not kill the tank that fired it
                         if !(bullet_owner.0 == collider_entity && ricochet_count.0 < 1) {
                             commands.entity(bullet_entity).despawn();
                             commands.entity(collider_entity).despawn()
@@ -523,6 +546,7 @@ fn bullet_collision_system(
                             Collision::Bottom => reflect_y = velocity.y > 0.0,
                         }
 
+                        // Destroy bullets if they have reached their ricochet limit
                         if ricochet_count.0 >= ricochet_limit.0 && (reflect_x || reflect_y) {
                             commands.entity(bullet_entity).despawn();
                         } else {
@@ -600,6 +624,10 @@ fn playing_system(
     enemy_query: Query<&Enemy>,
     mut game_state: ResMut<State<GameState>>,
 ) {
+    // If there are no more enemies set state to Win, otherwise, if the player was destroyed, set
+    // state to lose.
+    // In the unlikely event of a tie, the player win takes precedence for a less frustrating
+    // experience :)
     if enemy_query.iter().count() == 0 {
         game_state
             .set(GameState::Win)
@@ -611,6 +639,8 @@ fn playing_system(
     }
 }
 
+// Teardown system
+// Clean-up all entities, excluding camera and UI elements
 fn teardown_system(
     mut commands: Commands,
     entities: Query<Entity, (Without<Camera>, Without<UiElement>)>,
@@ -620,7 +650,9 @@ fn teardown_system(
     }
 }
 
+// Lose state systems
 fn lose_setup_system(mut commands: Commands) {
+    // Start a timer
     commands
         .spawn()
         .insert(GameTimer(Timer::from_seconds(4.0, false)));
@@ -631,6 +663,7 @@ fn lose_system(
     mut query: Query<&mut GameTimer>,
     mut game_state: ResMut<State<GameState>>,
 ) {
+    // Reset current level if timer reaches 0
     if let Ok(mut timer) = query.single_mut() {
         if timer.0.tick(time.delta()).just_finished() {
             game_state
@@ -640,7 +673,9 @@ fn lose_system(
     }
 }
 
+// Win state systems
 fn win_setup_system(mut commands: Commands, mut query: Query<&mut Text, With<WinText>>) {
+    // Start a timer
     commands
         .spawn()
         .insert(GameTimer(Timer::from_seconds(4.0, false)));
@@ -655,6 +690,7 @@ fn win_system(
     mut query: Query<&mut GameTimer>,
     mut game_state: ResMut<State<GameState>>,
 ) {
+    // Set state to Playing again after timer reaches 0
     if let Ok(mut timer) = query.single_mut() {
         if timer.0.tick(time.delta()).just_finished() {
             game_state
@@ -664,23 +700,15 @@ fn win_system(
     }
 }
 
-fn text_update_system(diagnostics: Res<Diagnostics>, mut query: Query<&mut Text, With<FpsText>>) {
-    for mut text in query.iter_mut() {
-        if let Some(fps) = diagnostics.get(FrameTimeDiagnosticsPlugin::FPS) {
-            if let Some(average) = fps.average() {
-                text.sections[1].value = format!("{:.2}", average);
-            }
-        }
-    }
-}
-
 fn blank_text_system(mut query: Query<&mut Text, With<WinText>>) {
+    // Clear the "Mission complete!" text by setting color to NONE
     if let Ok(mut text) = query.single_mut() {
         text.sections[0].style.color = Color::NONE;
     }
 }
 
 fn next_level_system(mut current_level: ResMut<CurrentLevel>) {
+    // Set next level to go to
     if let Some(level) = &current_level.0 {
         current_level.0 = match level {
             Level::L1 => Some(Level::L2),
