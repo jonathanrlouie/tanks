@@ -295,8 +295,7 @@ fn setup_level1(
     creator.create_wall(32.0, -64.0);
 
     // create enemies
-    creator.create_brown_tank(-100.0, 100.0);
-    creator.create_brown_tank(200.0, 150.0);
+    creator.create_brown_tank(-130.0, 150.0);
 }
 
 // Level 2 setup system
@@ -323,6 +322,7 @@ fn setup_level2(
 
     // create enemies
     creator.create_brown_tank(-100.0, 100.0);
+    creator.create_brown_tank(100.0, 150.0);
 }
 
 // Main game systems
