@@ -1,52 +1,58 @@
 use bevy::{
     diagnostic::{Diagnostics, FrameTimeDiagnosticsPlugin},
     prelude::*,
-    render::camera::Camera,
+    render::{
+        camera::Camera,
+        view::Visibility,
+    },
     sprite::collide_aabb::{collide, Collision},
 };
 
 const SHOW_FPS: bool = true;
 
 fn main() {
-    App::build()
+    App::new()
         .insert_resource(CursorPosition { pos: Vec2::ZERO })
         .insert_resource(CurrentLevel(Some(Level::L1)))
         .add_plugins(DefaultPlugins)
         .add_plugin(FrameTimeDiagnosticsPlugin::default())
         .add_state(GameState::Playing)
-        .add_startup_system(setup_cameras.system())
-        .add_startup_system(setup_text.system())
-        .add_system_set(SystemSet::on_enter(GameState::Playing).with_system(setup.system()))
+        .add_startup_system(setup_cameras)
+        .add_startup_system(setup_text)
+        .add_system_set(SystemSet::on_enter(GameState::Playing).with_system(setup))
         .add_system_set(
             SystemSet::on_update(GameState::Playing)
-                .with_system(player_movement_system.system())
-                .with_system(player_shoot_system.system())
-                .with_system(bullet_movement_system.system())
-                .with_system(cursor_position_system.system())
-                .with_system(bullet_cleanup_system.system())
-                .with_system(bullet_collision_system.system())
-                .with_system(brown_tank_shoot_system.system())
-                .with_system(playing_system.system()),
+                .with_system(player_movement_system)
+                .with_system(player_shoot_system)
+                .with_system(bullet_movement_system)
+                .with_system(cursor_position_system)
+                .with_system(bullet_cleanup_system)
+                .with_system(bullet_collision_system)
+                .with_system(brown_tank_shoot_system)
+                .with_system(playing_system),
         )
         .add_system_set(
-            SystemSet::on_enter(GameState::Lose).with_system(lose_setup_system.system()),
+            SystemSet::on_enter(GameState::Lose).with_system(lose_setup_system),
         )
-        .add_system_set(SystemSet::on_update(GameState::Lose).with_system(lose_system.system()))
-        .add_system_set(SystemSet::on_exit(GameState::Lose).with_system(teardown_system.system()))
-        .add_system_set(SystemSet::on_enter(GameState::Win).with_system(win_setup_system.system()))
-        .add_system_set(SystemSet::on_update(GameState::Win).with_system(win_system.system()))
+        .add_system_set(SystemSet::on_update(GameState::Lose).with_system(lose_system))
+        .add_system_set(SystemSet::on_exit(GameState::Lose).with_system(teardown_system))
+        .add_system_set(SystemSet::on_enter(GameState::Win).with_system(win_setup_system))
+        .add_system_set(SystemSet::on_update(GameState::Win).with_system(win_system))
         .add_system_set(
             SystemSet::on_exit(GameState::Win)
-                .with_system(blank_text_system.system())
-                .with_system(next_level_system.system())
-                .with_system(teardown_system.system()),
+                .with_system(blank_text_system)
+                .with_system(next_level_system)
+                .with_system(teardown_system),
         )
-        .add_system(text_update_system.system())
+        .add_system(text_update_system)
         .run()
 }
 
+#[derive(Component)]
 struct UiElement;
+#[derive(Component)]
 struct FpsText;
+#[derive(Component)]
 struct WinText;
 
 enum Level {
@@ -67,8 +73,10 @@ struct CursorPosition {
     pos: Vec2,
 }
 
+#[derive(Component)]
 struct GameTimer(Timer);
 
+#[derive(Component)]
 enum Collider {
     Wall,
     Player,
@@ -76,24 +84,35 @@ enum Collider {
     Enemy,
 }
 
+#[derive(Component)]
 struct Player {
     speed: f32,
 }
 
+#[derive(Component)]
 struct Bullet {
     velocity: Vec3,
 }
 
+#[derive(Component)]
+struct Hitbox(Vec2);
+
+#[derive(Component)]
 struct RicochetLimit(u32);
 
+#[derive(Component)]
 struct RicochetCount(u32);
 
+#[derive(Component)]
 struct BulletOwner(Entity);
 
+#[derive(Component)]
 struct BulletLimit(u8);
 
+#[derive(Component)]
 struct Enemy;
 
+#[derive(Component)]
 struct BrownTank;
 
 // Camera system
@@ -109,7 +128,6 @@ fn setup_cameras(mut commands: Commands) {
 fn setup_text(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     commands
         .spawn_bundle(NodeBundle {
@@ -118,7 +136,7 @@ fn setup_text(
                 size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
                 ..Default::default()
             },
-            material: materials.add(Color::NONE.into()),
+            visibility: Visibility { is_visible: false },
             ..Default::default()
         })
         .insert(UiElement)
@@ -164,7 +182,7 @@ fn setup_text(
                         align_items: AlignItems::Center,
                         ..Default::default()
                     },
-                    material: materials.add(Color::NONE.into()),
+		    visibility: Visibility { is_visible: false },
                     ..Default::default()
                 })
                 .insert(UiElement)
@@ -195,7 +213,7 @@ fn setup_text(
                         size: Size::new(Val::Percent(15.0), Val::Percent(100.0)),
                         ..Default::default()
                     },
-                    material: materials.add(Color::NONE.into()),
+		    visibility: Visibility { is_visible: false },
                     ..Default::default()
                 })
                 .insert(UiElement);
@@ -216,22 +234,20 @@ fn text_update_system(diagnostics: Res<Diagnostics>, mut query: Query<&mut Text,
 fn setup(
     commands: Commands,
     asset_server: Res<AssetServer>,
-    materials: ResMut<Assets<ColorMaterial>>,
     current_level: Res<CurrentLevel>,
 ) {
     if let Some(level) = &current_level.0 {
         match level {
-            Level::L1 => setup_level1(commands, asset_server, materials),
-            Level::L2 => setup_level2(commands, asset_server, materials),
+            Level::L1 => setup_level1(commands, asset_server),
+            Level::L2 => setup_level2(commands, asset_server),
         }
     }
 }
 
 // Creator for "prefabs"
 struct Creator<'a> {
-    commands: Commands<'a>,
+    commands: Commands<'a, 'a>,
     asset_server: Res<'a, AssetServer>,
-    materials: ResMut<'a, Assets<ColorMaterial>>,
 }
 
 impl<'a> Creator<'a> {
@@ -239,12 +255,13 @@ impl<'a> Creator<'a> {
         let texture_handle = self.asset_server.load("player.png");
         self.commands
             .spawn_bundle(SpriteBundle {
-                material: self.materials.add(texture_handle.into()),
+                texture: texture_handle,
                 transform: Transform::from_xyz(x, y, 0.0),
                 ..Default::default()
             })
             .insert(Player { speed: 100.0 })
             .insert(BulletLimit(5))
+            .insert(Hitbox(Vec2::new(32.0, 32.0)))
             .insert(Collider::Player);
     }
 
@@ -252,10 +269,11 @@ impl<'a> Creator<'a> {
         let texture_handle = self.asset_server.load("wall.png");
         self.commands
             .spawn_bundle(SpriteBundle {
-                material: self.materials.add(texture_handle.into()),
+                texture: texture_handle,
                 transform: Transform::from_xyz(x, y, 0.0),
                 ..Default::default()
             })
+            .insert(Hitbox(Vec2::new(32.0, 32.0)))
             .insert(Collider::Wall);
     }
 
@@ -263,13 +281,14 @@ impl<'a> Creator<'a> {
         let texture_handle = self.asset_server.load("enemy_brown.png");
         self.commands
             .spawn_bundle(SpriteBundle {
-                material: self.materials.add(texture_handle.into()),
+                texture: texture_handle,
                 transform: Transform::from_xyz(x, y, 0.0),
                 ..Default::default()
             })
             .insert(BulletLimit(1))
             .insert(BrownTank)
             .insert(Enemy)
+            .insert(Hitbox(Vec2::new(32.0, 32.0)))
             .insert(Collider::Enemy);
     }
 }
@@ -278,12 +297,10 @@ impl<'a> Creator<'a> {
 fn setup_level1(
     commands: Commands,
     asset_server: Res<AssetServer>,
-    materials: ResMut<Assets<ColorMaterial>>,
 ) {
     let mut creator = Creator {
         commands,
         asset_server,
-        materials,
     };
 
     // player
@@ -302,12 +319,10 @@ fn setup_level1(
 fn setup_level2(
     commands: Commands,
     asset_server: Res<AssetServer>,
-    materials: ResMut<Assets<ColorMaterial>>,
 ) {
     let mut creator = Creator {
         commands,
         asset_server,
-        materials,
     };
 
     // player
@@ -331,19 +346,21 @@ fn player_movement_system(
     time: Res<Time>,
     keyboard_input: Res<Input<KeyCode>>,
     mut queries: QuerySet<(
-        Query<(&Transform, &Sprite), With<Player>>,
-        Query<(&Collider, &Transform, &Sprite)>,
-        Query<(&Player, &mut Transform)>,
+        QueryState<(&Transform, &Hitbox), With<Player>>,
+        QueryState<(&Collider, &Transform, &Hitbox)>,
+        QueryState<(&Player, &mut Transform)>,
     )>,
 ) {
     let mut collisions: Vec<Collision> = vec![];
-    if let Ok((player_transform, player_sprite)) = queries.q0().single() {
-        for (collider, transform, sprite) in queries.q1().iter() {
+    if let Ok((player_transform, player_hitbox)) = queries.q0().get_single() {
+        let player_transform = player_transform.clone();
+        let player_hitbox = player_hitbox.0.clone();
+        for (collider, transform, hitbox) in queries.q1().iter() {
             let collision = collide(
                 player_transform.translation,
-                player_sprite.size,
+                player_hitbox,
                 transform.translation,
-                sprite.size,
+                hitbox.0,
             );
 
             // Stop player movement on collision with walls or enemies
@@ -356,7 +373,7 @@ fn player_movement_system(
         }
     }
 
-    if let Ok((player, mut player_transform)) = queries.q2_mut().single_mut() {
+    if let Ok((player, mut player_transform)) = queries.q2().get_single_mut() {
         let mut direction: Vec2 = Vec2::ZERO;
         if keyboard_input.pressed(KeyCode::A) {
             direction -= Vec2::X;
@@ -439,12 +456,11 @@ fn player_shoot_system(
     mut commands: Commands,
     mouse_input: Res<Input<MouseButton>>,
     asset_server: Res<AssetServer>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
     query: Query<(Entity, &BulletLimit, &Transform), With<Player>>,
     bullet_query: Query<&BulletOwner, With<Bullet>>,
     cursor_position: Res<CursorPosition>,
 ) {
-    if let Ok((player_entity, bullet_limit, player_transform)) = query.single() {
+    if let Ok((player_entity, bullet_limit, player_transform)) = query.get_single() {
         if mouse_input.just_pressed(MouseButton::Left)
             && bullet_query
                 .iter()
@@ -466,7 +482,7 @@ fn player_shoot_system(
                     0.0,
                 );
                 let sprite_bundle = SpriteBundle {
-                    material: materials.add(texture_handle.into()),
+                    texture: texture_handle,
                     transform: bullet_transform,
                     ..Default::default()
                 };
@@ -480,6 +496,7 @@ fn player_shoot_system(
                     .insert(BulletOwner(player_entity))
                     .insert(RicochetLimit(1))
                     .insert(RicochetCount(0))
+                    .insert(Hitbox(Vec2::new(8.0, 8.0)))
                     .insert(Collider::Bullet);
             }
         }
@@ -501,9 +518,9 @@ fn bullet_collision_system(
         &RicochetLimit,
         &mut RicochetCount,
         &Transform,
-        &Sprite,
+        &Hitbox,
     )>,
-    collider_query: Query<(Entity, &Collider, &Transform, &Sprite)>,
+    collider_query: Query<(Entity, &Collider, &Transform, &Hitbox)>,
 ) {
     for (
         bullet_entity,
@@ -512,16 +529,16 @@ fn bullet_collision_system(
         ricochet_limit,
         mut ricochet_count,
         bullet_transform,
-        bullet_sprite,
+        bullet_hitbox,
     ) in bullet_query.iter_mut()
     {
         let velocity = &mut bullet.velocity;
-        for (collider_entity, collider, transform, sprite) in collider_query.iter() {
+        for (collider_entity, collider, transform, hitbox) in collider_query.iter() {
             let collision = collide(
                 bullet_transform.translation,
-                bullet_sprite.size,
+                bullet_hitbox.0,
                 transform.translation,
-                sprite.size,
+                hitbox.0,
             );
 
             if let Some(collision) = collision {
@@ -572,13 +589,12 @@ fn bullet_collision_system(
 fn brown_tank_shoot_system(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
     brown_tank_query: Query<(Entity, &BulletLimit, &Transform), With<BrownTank>>,
     player_query: Query<&Transform, With<Player>>,
     bullet_query: Query<&BulletOwner, With<Bullet>>,
 ) {
     for (tank_entity, bullet_limit, tank_transform) in brown_tank_query.iter() {
-        if let Ok(player_transform) = player_query.single() {
+        if let Ok(player_transform) = player_query.get_single() {
             if bullet_query
                 .iter()
                 .filter(|owner| owner.0 == tank_entity)
@@ -599,7 +615,7 @@ fn brown_tank_shoot_system(
                         0.0,
                     );
                     let sprite_bundle = SpriteBundle {
-                        material: materials.add(texture_handle.into()),
+                        texture: texture_handle,
                         transform: bullet_transform,
                         ..Default::default()
                     };
@@ -612,6 +628,7 @@ fn brown_tank_shoot_system(
                         .insert(BulletOwner(tank_entity))
                         .insert(RicochetLimit(1))
                         .insert(RicochetCount(0))
+                        .insert(Hitbox(Vec2::new(8.0, 8.0)))
                         .insert(Collider::Bullet);
                 }
             }
@@ -632,7 +649,7 @@ fn playing_system(
         game_state
             .set(GameState::Win)
             .expect("Error: Failed to push Win state");
-    } else if player_query.single().is_err() {
+    } else if player_query.get_single().is_err() {
         game_state
             .set(GameState::Lose)
             .expect("Error: Failed to push Lose state")
@@ -664,7 +681,7 @@ fn lose_system(
     mut game_state: ResMut<State<GameState>>,
 ) {
     // Reset current level if timer reaches 0
-    if let Ok(mut timer) = query.single_mut() {
+    if let Ok(mut timer) = query.get_single_mut() {
         if timer.0.tick(time.delta()).just_finished() {
             game_state
                 .set(GameState::Playing)
@@ -680,7 +697,7 @@ fn win_setup_system(mut commands: Commands, mut query: Query<&mut Text, With<Win
         .spawn()
         .insert(GameTimer(Timer::from_seconds(4.0, false)));
 
-    if let Ok(mut text) = query.single_mut() {
+    if let Ok(mut text) = query.get_single_mut() {
         text.sections[0].style.color = Color::WHITE;
     }
 }
@@ -691,7 +708,7 @@ fn win_system(
     mut game_state: ResMut<State<GameState>>,
 ) {
     // Set state to Playing again after timer reaches 0
-    if let Ok(mut timer) = query.single_mut() {
+    if let Ok(mut timer) = query.get_single_mut() {
         if timer.0.tick(time.delta()).just_finished() {
             game_state
                 .set(GameState::Playing)
@@ -702,7 +719,7 @@ fn win_system(
 
 fn blank_text_system(mut query: Query<&mut Text, With<WinText>>) {
     // Clear the "Mission complete!" text by setting color to NONE
-    if let Ok(mut text) = query.single_mut() {
+    if let Ok(mut text) = query.get_single_mut() {
         text.sections[0].style.color = Color::NONE;
     }
 }
